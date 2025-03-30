@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Reservation Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Poppins', sans-serif; }
+        .chat-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background-color: #4F46E5;
+            border-radius: 3px;
+        }
+        .seat { transition: all 0.3s ease; }
+        .seat:not(.occupied):hover { transform: scale(1.1); }
+        .loading {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #4F46E5;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-r from-blue-500 to-purple-600 min-h-screen">
+    <div class="container mx-auto p-4 max-w-4xl">
+        <div class="bg-white rounded-lg shadow-2xl overflow-hidden">
+            <div class="p-4 bg-indigo-600 text-white flex items-center justify-between">
+                <h1 class="text-xl font-bold">Flight Reservation Assistant</h1>
+                <div class="flex items-center space-x-2">
+                    <i class="bi bi-airplane-fill"></i>
+                    <i class="bi bi-chat-dots-fill"></i>
+                </div>
+            </div>
+            
+            <div class="chat-container h-[500px] overflow-y-auto p-4" id="chatContainer">
+                <div class="bot-message bg-gray-100 p-3 rounded-lg mb-4 max-w-[80%]">
+                    Hello! I'm your flight booking assistant. Please provide your departure city and destination to get started.
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-gray-200 bg-gray-50">
+                <div class="flex space-x-2">
+                    <input type="text" id="userInput" class="flex-1 px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:border-indigo-500" placeholder="Type your message...">
+                    <button onclick="sendMessage()" class="bg-indigo-600 text-white px-6 py-2 rounded-full hover:bg-indigo-700 transition-colors">
+                        <i class="bi bi-send-fill"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentState = 'initial';
+        let selectedFlight = null;
+        let selectedSeats = [];
+        let flightDetails = {
+            'Flight 1': { price: 299, seats: generateSeats() },
+            'Flight 2': { price: 399, seats: generateSeats() },
+            'Flight 3': { price: 349, seats: generateSeats() }
+        };
+
+        function generateSeats() {
+            const seats = {};
+            const rows = ['A', 'B', 'C', 'D', 'E', 'F'];
+            for(let i = 1; i <= 6; i++) {
+                rows.forEach(row => {
+                    const seatNumber = `${row}${i}`;
+                    seats[seatNumber] = {
+                        occupied: Math.random() > 0.7,
+                        price: Math.floor(Math.random() * 50) + 50
+                    };
+                });
+            }
+            return seats;
+        }
+
+        function addMessage(message, isUser = false) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = isUser ? 
+                'user-message bg-indigo-600 text-white p-3 rounded-lg mb-4 ml-auto max-w-[80%]' :
+                'bot-message bg-gray-100 p-3 rounded-lg mb-4 max-w-[80%]';
+            messageDiv.innerHTML = message;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function showFlights(from, to) {
+            let flightsList = `
+                <div class="space-y-2">
+                    <p class="font-semibold">Available flights from ${from} to ${to}:</p>
+                    ${Object.keys(flightDetails).map(flight => `
+                        <div class="flight-option p-3 bg-gray-50 rounded-lg hover:bg-indigo-50 cursor-pointer transition-colors"
+                             onclick="selectFlight('${flight}')">
+                            <div class="flex justify-between items-center">
+                                <span>${flight}</span>
+                                <span class="font-bold">$${flightDetails[flight].price}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            addMessage(flightsList);
+        }
+
+        function showSeats(flight) {
+            const seats = flightDetails[flight].seats;
+            let seatsGrid = `
+                <div class="space-y-4">
+                    <p class="font-semibold">Select your seats for ${flight}:</p>
+                    <div class="grid grid-cols-6 gap-2 p-4 bg-gray-50 rounded-lg">
+                        ${Object.entries(seats).map(([seatNum, details]) => `
+                            <div class="seat ${details.occupied ? 'occupied bg-gray-400' : 'bg-indigo-100 hover:bg-indigo-200'} 
+                                        p-2 rounded text-center cursor-pointer"
+                                 onclick="${details.occupied ? '' : `toggleSeat('${seatNum}')`}"
+                                 id="seat-${seatNum}">
+                                ${seatNum}<br>$${details.price}
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button onclick="proceedToPayment()" 
+                            class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+                        Proceed to Payment
+                    </button>
+                </div>
+            `;
+            addMessage(seatsGrid);
+        }
+
+        function showPaymentForm() {
+            const total = selectedSeats.reduce((sum, seat) => 
+                sum + flightDetails[selectedFlight].seats[seat].price, 0);
+            
+            let paymentForm = `
+                <div class="space-y-4">
+                    <p class="font-semibold">Payment Details (Total: $${total})</p>
+                    <div class="space-y-3">
+                        <input type="text" placeholder="Card Number" class="w-full p-2 border rounded" />
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="text" placeholder="MM/YY" class="p-2 border rounded" />
+                            <input type="text" placeholder="CVV" class="p-2 border rounded" />
+                        </div>
+                        <button onclick="processPayment()" 
+                                class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors">
+                            Pay $${total}
+                        </button>
+                    </div>
+                </div>
+            `;
+            addMessage(paymentForm);
+        }
+
+        function toggleSeat(seatNum) {
+            const seatElement = document.getElementById(`seat-${seatNum}`);
+            if(selectedSeats.includes(seatNum)) {
+                selectedSeats = selectedSeats.filter(s => s !== seatNum);
+                seatElement.classList.remove('bg-indigo-600', 'text-white');
+                seatElement.classList.add('bg-indigo-100');
+            } else {
+                selectedSeats.push(seatNum);
+                seatElement.classList.remove('bg-indigo-100');
+                seatElement.classList.add('bg-indigo-600', 'text-white');
+            }
+        }
+
+        function selectFlight(flight) {
+            selectedFlight = flight;
+            selectedSeats = [];
+            showSeats(flight);
+        }
+
+        function proceedToPayment() {
+            if(selectedSeats.length === 0) {
+                addMessage("Please select at least one seat to continue.");
+                return;
+            }
+            showPaymentForm();
+        }
+
+        function processPayment() {
+            addMessage("Processing payment...");
+            setTimeout(() => {
+                addMessage("Payment successful! Your flight has been booked. Have a great trip! 🎉");
+                currentState = 'initial';
+                selectedFlight = null;
+                selectedSeats = [];
+            }, 2000);
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            
+            if(message === '') return;
+            
+            addMessage(message, true);
+            input.value = '';
+
+            if(currentState === 'initial') {
+                const [from, to] = message.split('to').map(s => s.trim());
+                if(to) {
+                    showFlights(from, to);
+                    currentState = 'selecting_flight';
+                } else {
+                    addMessage("Please provide both departure and destination cities in the format: 'City A to City B'");
+                }
+            }
+        }
+
+        document.getElementById('userInput').addEventListener('keypress', function(e) {
+            if(e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
